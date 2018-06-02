@@ -217,18 +217,34 @@ function filter_format_editor_image_form($form, &$form_state, $format) {
     '#access' => $element_supports_uploads && $upload_settings['status'] && user_access('upload editor images'),
   );
 
-  // Use a "textfield" rather than "url" to allow relative paths.
-  $form['image']['src'] = array(
-    '#title' => t('Image URL'),
+  // Image library, very similar to Image URL
+  global $base_url;
+  $form['image']['library'] = array(
+    '#attributes' => array(
+      'data-editor-image-toggle' => t('Select image'),
+      'data-editor-image-library-base-url' => $base_url,
+    ),
+    '#title' => t('Select image'),
+    '#type' => 'container',
+    '#weight' => -2,
+  );
+  $form['image']['library']['src'] = array(
+    '#title' => t('Select image'),
     '#type' => 'textfield',
     '#element_validate' => array('_filter_format_editor_link_url_validate'),
     '#placeholder' => '/example/image.jpg',
-    '#default_value' => isset($values['src']) ? $values['src'] : NULL,
     '#parents' => array('attributes', 'src'),
-    '#wrapper_attributes' => array(
-      'data-editor-image-toggle' => t('Image URL'),
-    ),
+    '#default_value' => isset($values['src']) ? $values['src'] : NULL,
     '#weight' => -2,
+  );
+  $form['image']['library']['library_browse'] = array(
+    '#value' => t('Select image'),
+    '#type' => 'submit',
+    '#submit' => array('filter_browse_image_form_redirect'),
+    '#ajax' => array(
+      'callback' => 'filter_ajax_form_open_dialog',
+    ),
+    '#weight' => -1,
   );
 
   // If no current value or an existing file exists, default to showing
@@ -311,6 +327,83 @@ function filter_format_editor_image_form($form, &$form_state, $format) {
 }
 
 /**
+ * Form callback: Display a gallery of images.
+ */
+function filter_browse_image_form_redirect($form, &$form_state) {
+  $form_state['redirect'] = 'filter-gallery/' . $form_state['format']->format;
+}
+
+/**
+ * Form callback: Display a gallery of images.
+ */
+function filter_browse_image_form($form, &$form_state, $format= NULL) {
+  form_load_include($form_state, 'inc', 'filter', 'filter.pages');
+  global $base_url;
+  $form['#attributes'] = array(
+    'data-library-base-url' => $base_url,
+    'class' => 'browse-image-form',
+  );
+  $form['image'] = array(
+    '#title' => t('Select image'),
+    '#markup' => views_embed_view('image_library'),
+    '#type' => 'markup',
+    '#weight' => -1,
+  );
+  $form['image_selected'] = array(
+    '#title' => t('Select image'),
+    '#type' => 'textfield',
+    '#weight' => -1,
+  );
+  $form['actions']['#type'] = 'actions';
+  $form['actions']['close_submit'] = array(
+    '#type' => 'submit',
+    '#submit' => array('filter_fsubmits'),
+    '#name' => 'filter_close',
+    '#value' => 'Select',
+    '#ajax' => array(
+      'callback' => 'filter_format_editor_dialog_close', // todo modify filter_format_editor_dialog_save() instead
+      'event' => 'click',
+    ),
+  );
+
+  return $form;
+}
+function filter_fsubmits($form, &$form_state) {
+}
+
+/**
+ * AJAX handler that opens a form in a dialog.
+ */
+function filter_format_editor_dialog_close($form, &$form_state) {
+  $dialog_selector = '#gallery-library';
+  $commands[] = array(
+    'command' => 'editorImageSave',
+    'values' => $form_state['values'],
+  );
+  $commands[] = ajax_command_close_dialog('#gallery-library');
+  return array(
+    '#type' => 'ajax',
+    '#commands' => $commands,
+  );
+}
+
+/**
+ * AJAX handler that opens a form in a dialog.
+ */
+function filter_ajax_form_open_dialog($form, &$form_state) {
+  // Get the dialog path as set in the redirect.
+  $gallery = backdrop_get_form('filter_browse_image_form');
+  $html = backdrop_render($gallery);
+  $title = 'Gallery';
+  $commands[] = ajax_command_open_dialog('#gallery-library', $title, $html, array('dialogClass' => 'filter-dialog', 'width' => '95%', 'maxWidth' => '600px'));
+
+  return array(
+    '#type' => 'ajax',
+    '#commands' => $commands,
+  );
+}
+
+/**
  * Submit handler for filter_format_editor_image_form().
  */
 function filter_format_editor_image_form_submit($form, &$form_state) {
@@ -321,13 +414,18 @@ function filter_format_editor_image_form_submit($form, &$form_state) {
     $form_state['values']['attributes']['data-file-id'] = NULL;
   }
   // Convert any uploaded files from the FID values to the src attribute.
-  if (!empty($form_state['values']['fid'])) {
+  if (isset($form_state['values']['fid'])) { 
     $fid = $form_state['values']['fid'];
-    $file = file_load($fid);
+    if ($fid == 0) {
+      $url = $form_state['values']['image_library']['src'];
+    }
+    else {
+      $file = file_load($fid);
+      $url = file_create_url($file->uri);
+    }
 
     // Try to make a local path if possible for better portability.
     $absolute_path = parse_url($GLOBALS['base_url'], PHP_URL_PATH) . '/';
-    $url = file_create_url($file->uri);
     $url = str_replace($GLOBALS['base_url'] . '/', $absolute_path, $url);
 
     $form_state['values']['attributes']['src'] = $url;

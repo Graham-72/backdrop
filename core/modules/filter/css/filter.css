@@ -91,3 +91,10 @@ input#edit-filters-filter-html-settings-allowed-html {
   display: inline-block !important;
   padding-bottom: 10px;
 }
+.view-image-library td {
+  padding-left: 5px;
+  padding-right: 5px;
+}
+.filter-dialog {
+  max-width: 1200px;
+}
